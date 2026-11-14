@@ -1,6 +1,0 @@
-{% extends 'base.html' %}{% block body %}
-<div class="pagehead"><div><p class="eyebrow">TEACHER REVIEW</p><h1>{{exam.title}}</h1><p class="muted">{{exam.class_level or 'Legacy exam'}} · {{questions|length}} questions · {{exam.duration}} minutes</p></div><a class="btn secondary" href="{{url_for('dashboard')}}">Back to dashboard</a></div>
-<section class="panel"><p><b>Exam code:</b> {{exam.exam_code or 'Not assigned'}} &nbsp; <b>Status:</b> {{exam.status}}</p><p class="muted">Check every question, question type, option and answer key before publishing.</p></section>
-{% for q in questions %}<section class="panel question"><div class="qmeta"><b>Question {{q.q_no}} · {{q.qtype|upper}}</b><span>{{q.marks}} mark(s)</span></div><p class="prompt">{{q.prompt}}</p>{% if q.options %}<ol>{% for option in q.options.split('|') %}<li>{{option}}</li>{% endfor %}</ol>{% endif %}<p><b>Answer key:</b> {{q.answer or 'Missing'}}</p></section>{% endfor %}
-{% if exam.status=='draft' %}<form method="post" action="{{url_for('publish_exam',exam_id=exam.id)}}" onsubmit="return confirm('I have reviewed the questions and answer keys. Publish this examination?')"><button class="btn">Approve &amp; publish examination</button></form>{% endif %}
-{% endblock %}
