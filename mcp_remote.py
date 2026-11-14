@@ -166,14 +166,25 @@ def portal_call(method: str, path: str, **kwargs):
         headers={"Authorization": "Bearer " + PORTAL_TOKEN},
         timeout=90, **kwargs,
     )
-    response.raise_for_status()
+    if not response.ok:
+        detail = response.text[:1500]
+        raise RuntimeError(f"Portal API returned HTTP {response.status_code}: {detail}")
     return response.json()
+
+def normalize_class_level(value: str) -> str:
+    value = str(value).strip()
+    if value.isdigit():
+        value = f"Class {value}"
+    if value not in {f"Class {i}" for i in range(5, 13)}:
+        raise ValueError("class_level must be Class 5 through Class 12 (or just the grade number).")
+    return value
 
 @mcp.tool()
 def upload_exam_excel(title: str, class_level: str, workbook_base64: str, shared_password: str,
                       duration: int = 45, review: int = 0, password_exam_limit: int = 1,
                       file_name: str = "exam.xlsx") -> dict:
-    """Upload a Gemini-created .xlsx workbook as a DRAFT. Required headers: question,type,marks,answer. Optional: option_a,option_b,option_c,option_d. Types: mcq,fill,text. Teacher approval is required to publish."""
+    """Upload a Gemini-created .xlsx workbook as a DRAFT. class_level accepts Class 5 through Class 12 or just the grade number (for example 8). Required headers: question,type,marks,answer. Optional: option_a,option_b,option_c,option_d. Types: mcq,fill,text. Teacher approval is required to publish."""
+    class_level = normalize_class_level(class_level)
     return portal_call("POST", "/api/mcp/exams/upload", json={
         "title": title, "class_level": class_level, "workbook_base64": workbook_base64,
         "shared_password": shared_password, "duration": duration, "review": review,
