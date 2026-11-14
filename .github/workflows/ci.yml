@@ -1,0 +1,35 @@
+name: Python application checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  smoke-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Compile Python files
+        run: python -m compileall -q app.py portal_upgrade.py mcp_server.py wsgi.py
+      - name: Smoke-test Flask startup and public pages
+        env:
+          DATABASE_PATH: /tmp/abhishek-exam-portal-ci.db
+          SECRET_KEY: ci-only-secret-key
+          ADMIN_USERNAME: ci-admin
+          ADMIN_PASSWORD: ci-only-password
+        run: |
+          python - <<'PY'
+          import wsgi
+          client = wsgi.app.test_client()
+          for path in ("/", "/student/login", "/admin/login"):
+              response = client.get(path)
+              assert response.status_code == 200, (path, response.status_code)
+          print("Flask startup and public-page smoke tests passed.")
+          PY
