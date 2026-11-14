@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: student-exam-portal
+    name: abhishek-santra-exam-portal-test
     runtime: python
     plan: free
     buildCommand: pip install -r requirements.txt
