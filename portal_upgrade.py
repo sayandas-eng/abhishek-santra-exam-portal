@@ -70,7 +70,14 @@ def register(app):
                     flash("Invalid exam code or password.")
                     return render_template("login.html", kind="Student")
                 s = c.execute("SELECT * FROM students WHERE display_name=? AND class_level=? ORDER BY id LIMIT 1",(name,grade)).fetchone()
-                sid = s["id"] if s else create_student(name,grade)
+                if s:
+                    sid = s["id"]
+                else:
+                    key = secrets.token_hex(12)
+                    cur = c.execute(
+                        "INSERT INTO students(username,password_hash,active,display_name,class_level) VALUES(?,?,1,?,?) RETURNING id",
+                        ("student_"+key, generate_password_hash(secrets.token_urlsafe(32)), name, grade))
+                    sid = cur.fetchone()["id"]
                 session.clear(); session["role"]="student"; session["student_id"]=sid
                 session["username"]=name; session["student_name"]=name; session["class_level"]=grade
                 session["exam_code"]=code
