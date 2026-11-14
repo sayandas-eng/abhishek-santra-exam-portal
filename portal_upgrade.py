@@ -215,6 +215,17 @@ def register(app):
         return redirect(url_for("results"))
     app.add_url_rule("/admin/result/<int:attempt_id>/delete","delete_result",admin_required(delete_result),methods=["POST"])
 
+
+    # Teacher review page: inspect every imported question and answer key before publishing.
+    def review_exam(exam_id):
+        with db() as c:
+            exam = c.execute("SELECT * FROM exams WHERE id=?", (exam_id,)).fetchone()
+            if not exam: abort(404)
+            questions = c.execute("SELECT * FROM questions WHERE exam_id=? ORDER BY q_no", (exam_id,)).fetchall()
+        return render_template("review_exam.html", exam=exam, questions=questions)
+    app.add_url_rule("/admin/exam/<int:exam_id>/review", "review_exam",
+                     admin_required(review_exam), methods=["GET"])
+
     # Authenticated JSON surface for the companion MCP server.
     def mcp_auth(fn):
         def wrapped(*args,**kwargs):
