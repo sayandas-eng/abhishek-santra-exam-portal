@@ -139,6 +139,7 @@ class PortalOAuthProvider(OAuthAuthorizationServerProvider[AuthorizationCode, Re
 provider = PortalOAuthProvider()
 auth = AuthSettings(
     issuer_url=AnyHttpUrl(PUBLIC_URL),
+    resource_server_url=AnyHttpUrl(PUBLIC_URL),
     client_registration_options=ClientRegistrationOptions(
         enabled=True, valid_scopes=["portal"], default_scopes=["portal"]
     ),
