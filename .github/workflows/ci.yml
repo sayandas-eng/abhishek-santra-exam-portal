@@ -1,0 +1,84 @@
+name: Python application checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  smoke-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Compile Python files
+        run: python -m compileall -q app.py portal_upgrade.py mcp_server.py wsgi.py
+      - name: Smoke-test portal and exam workflow
+        env:
+          DATABASE_PATH: /tmp/abhishek-exam-portal-ci.db
+          SECRET_KEY: ci-only-secret-key
+          ADMIN_USERNAME: ci-admin
+          ADMIN_PASSWORD: ci-only-password
+          MCP_API_TOKEN: ci-only-mcp-token
+        run: |
+          python - <<'PY'
+          import base64
+          import io
+          from openpyxl import Workbook
+          import wsgi
+
+          client = wsgi.app.test_client()
+          for path in ("/", "/student/login", "/admin/login"):
+              response = client.get(path)
+              assert response.status_code == 200, (path, response.status_code)
+
+          workbook = Workbook()
+          sheet = workbook.active
+          sheet.append(["question", "type", "marks", "answer", "option_a", "option_b"])
+          sheet.append(["What is the opposite of hot?", "mcq", 1, "Cold", "Cold", "Warm"])
+          output = io.BytesIO()
+          workbook.save(output)
+          upload = client.post(
+              "/api/mcp/exams/upload",
+              headers={"Authorization": "Bearer ci-only-mcp-token"},
+              json={
+                  "title": "CI Sample Examination",
+                  "class_level": "Class 5",
+                  "duration": 20,
+                  "review": 0,
+                  "shared_password": "ci-exam-password",
+                  "password_exam_limit": 1,
+                  "file_name": "ci-exam.xlsx",
+                  "workbook_base64": base64.b64encode(output.getvalue()).decode("ascii"),
+              },
+          )
+          assert upload.status_code == 200, upload.get_data(as_text=True)
+          exam = upload.get_json()
+          assert exam["status"] == "draft" and exam["question_count"] == 1
+
+          admin = client.post("/admin/login", data={
+              "username": "ci-admin", "password": "ci-only-password"
+          }, follow_redirects=True)
+          assert admin.status_code == 200
+          review = client.get(f"/admin/exam/{exam['exam_id']}/review")
+          assert review.status_code == 200
+          publish = client.post(
+              f"/admin/exam/{exam['exam_id']}/publish", follow_redirects=True
+          )
+          assert publish.status_code == 200
+
+          student = client.post("/student/login", data={
+              "name": "CI Student",
+              "class_level": "Class 5",
+              "exam_code": exam["exam_code"],
+              "password": "ci-exam-password",
+          }, follow_redirects=True)
+          assert student.status_code == 200
+          assert b"CI Sample Examination" in student.data
+          print("Portal startup, Excel intake, teacher review/publish and student login passed.")
+          PY
