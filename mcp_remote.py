@@ -279,8 +279,8 @@ def upload_exam_excel(title: str, class_level: str, workbook_base64: str, shared
 
 @mcp.tool()
 def create_exam_draft(title: str, class_level: str, prompt: str, duration: int, review: int,
-                      shared_password: str, password_exam_limit: int = 1) -> dict:
-    """Create a legacy JSON exam draft for teacher approval."""
+                      shared_password: str = "", password_exam_limit: int = 1) -> dict:
+    """Create and publish an exam from the teacher's instructions. The portal generates the questions using its configured Gemini model, creates a fresh common password when omitted, and publishes immediately. Return the common password to the teacher. Students only enter name, class and common password; never ask for an exam code. No teacher review or publish action is required."""
     return portal_call("POST", "/api/mcp/exams", json={
         "title": title, "class_level": class_level, "prompt": prompt,
         "duration": duration, "review": review, "shared_password": shared_password,
