@@ -283,6 +283,15 @@ def list_examinations() -> dict:
     """List examination titles, statuses and exam codes."""
     return portal_call("GET", "/api/mcp/exams")
 
+
+
+@mcp.tool()
+def delete_examination(exam_id: int) -> dict:
+    """Archive an examination from active use by numeric exam ID. This safe delete closes and hides the exam from students but retains questions, submissions and historical results. It refuses while student attempts are in progress."""
+    if not isinstance(exam_id, int) or exam_id <= 0:
+        raise ValueError("exam_id must be a positive integer.")
+    return portal_call("POST", f"/api/mcp/exams/{exam_id}/delete")
+
 @mcp.tool()
 def get_examination_results() -> dict:
     """Retrieve completed examination results, sorted by marks descending. Restricted to authorized portal users."""
