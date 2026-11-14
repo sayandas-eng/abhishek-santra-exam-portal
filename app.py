@@ -165,7 +165,7 @@ def admin_login():
 def logout():
     if session.get('role') == 'student':
         with db() as c:
-            a = c.execute("SELECT id FROM attempts WHERE student_id=? AND status='in_progress' ORDER BY id DESC LIMIT 1", (session['student_id'],)).fetchone()
+            a = c.execute("SELECT a.id FROM attempts a JOIN exams e ON e.id=a.exam_id WHERE a.student_id=? AND a.status='in_progress' AND e.exam_code=? ORDER BY a.id DESC LIMIT 1", (session['student_id'], session.get('exam_code'))).fetchone()
             if a: finalize(c, a['id'], 'submitted')
     session.clear()
     return redirect(url_for('home'))
