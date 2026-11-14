@@ -141,7 +141,7 @@ def register(app):
                                   (generate_password_hash(password),exam_limit,iso(now())))
                     gid=cur.fetchone()["id"]
                 code=secrets.token_urlsafe(6).replace("-","").replace("_","").upper()[:10]
-                cur=c.execute("INSERT INTO exams(title,duration,review_minutes,status,created_at,exam_code,access_password_hash,access_group_id,class_level) VALUES(?,?,?,'draft',?,?,?,?,?) RETURNING id",
+                cur=c.execute("INSERT INTO exams(title,duration,review_minutes,status,created_at,exam_code,access_password_hash,access_group_id,class_level) VALUES(?,?,?,'published',?,?,?,?,?) RETURNING id",
                               (title,duration,review,iso(now()),code,generate_password_hash(password),gid,grade))
                 eid=cur.fetchone()["id"]
                 for n,q in enumerate(questions,1):
@@ -149,7 +149,7 @@ def register(app):
                     c.execute("INSERT INTO questions(exam_id,q_no,prompt,qtype,options,answer,marks) VALUES(?,?,?,?,?,?,?)",
                               (eid,n,str(q["question"]),q["type"],opts,str(q.get("answer") or ""),float(q["marks"])))
                 c.execute("UPDATE portal_access_groups SET exams_created=exams_created+1 WHERE id=?",(gid,))
-            return jsonify(ok=True,exam_id=eid,exam_code=code,title=title,question_count=len(questions),status="draft")
+            return jsonify(ok=True,exam_id=eid,exam_code=code,title=title,question_count=len(questions),status="published")
         except Exception as ex:
             app.logger.exception("Gemini exam creation failed")
             return jsonify(ok=False,error=str(ex)[:500]),500
@@ -346,7 +346,7 @@ def register(app):
                 c.execute("UPDATE portal_access_groups SET exams_created=exams_created+1 WHERE id=?", (gid,))
             return jsonify(ok=True, exam_id=exam_id, title=title, class_level=grade, exam_code=code,
                            question_count=len(questions), total_marks=sum(q["marks"] for q in questions),
-                           status="draft", message="Uploaded as draft. Teacher review and approval are required before students can access it.")
+                           status="published", message="Exam uploaded and published automatically. Students need only the class and common password.")
         except (ValueError, TypeError) as ex:
             return jsonify(ok=False, error=str(ex)), 400
         except Exception as ex:
@@ -363,3 +363,39 @@ def register(app):
                 FROM attempts a JOIN exams e ON e.id=a.exam_id JOIN students s ON s.id=a.student_id
                 WHERE a.status<>'in_progress' ORDER BY score DESC""").fetchall()
         return jsonify(results=[dict(r) for r in rows])
+
+
+    # Password-only student access. The entered name is display-only.
+    def student_login_password_only():
+        if request.method == "POST":
+            name = request.form.get("name", "").strip()[:100] or "Student"
+            grade = request.form.get("class_level", "").strip()
+            password = request.form.get("password", "")
+            if grade not in [f"Class {i}" for i in range(5, 13)] or not password:
+                flash("Choose your class and enter the common exam password.")
+                return render_template("login.html", kind="Student")
+            with db() as conn:
+                candidates = conn.execute(
+                    "SELECT * FROM exams WHERE status='published' AND archived_at IS NULL AND class_level=? ORDER BY id DESC",
+                    (grade,)
+                ).fetchall()
+                exam = next((e for e in candidates if e["access_password_hash"] and check_password_hash(e["access_password_hash"], password)), None)
+                if not exam:
+                    flash("Invalid common password or no active exam for this class.")
+                    return render_template("login.html", kind="Student")
+                key = secrets.token_hex(16)
+                cur = conn.execute(
+                    "INSERT INTO students(username,password_hash,active,display_name,class_level) VALUES(?,?,1,?,?) RETURNING id",
+                    ("guest_" + key, generate_password_hash(secrets.token_urlsafe(32)), name, grade)
+                )
+                sid = cur.fetchone()["id"]
+                session.clear()
+                session["role"] = "student"
+                session["student_id"] = sid
+                session["username"] = name
+                session["student_name"] = name
+                session["class_level"] = grade
+                session["exam_code"] = exam["exam_code"]
+                return redirect(url_for("student_home"))
+        return render_template("login.html", kind="Student")
+    app.view_functions["student_login"] = student_login_password_only
