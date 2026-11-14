@@ -101,9 +101,11 @@ def register(app):
         duration=max(1,min(int(payload.get("duration",45)),240))
         review=max(0,min(int(payload.get("review",0)),60))
         password=str(payload.get("shared_password","")).strip()
-        exam_limit=max(1,min(int(payload.get("password_exam_limit",1)),100))
-        if not title or not prompt or not password:
-            return jsonify(ok=False,error="Title, question instructions and shared password are required."),400
+        if not password:
+            password="AS-"+secrets.token_urlsafe(7).replace("-","").replace("_","")[:10].upper()
+        exam_limit=1
+        if not title or not prompt:
+            return jsonify(ok=False,error="Title and question instructions are required."),400
         api_key=os.environ.get("GEMINI_API_KEY")
         if not api_key: return jsonify(ok=False,error="GEMINI_API_KEY is not configured in Render."),503
         try:
@@ -146,7 +148,9 @@ def register(app):
                     c.execute("INSERT INTO questions(exam_id,q_no,prompt,qtype,options,answer,marks) VALUES(?,?,?,?,?,?,?)",
                               (eid,n,str(q["question"]),q["type"],opts,str(q.get("answer") or ""),float(q["marks"])))
                 c.execute("UPDATE portal_access_groups SET exams_created=exams_created+1 WHERE id=?",(gid,))
-            return jsonify(ok=True,exam_id=eid,exam_code=code,title=title,question_count=len(questions),status="draft")
+            with db() as c:
+                c.execute("UPDATE exams SET status='published' WHERE id=?", (eid,))
+            return jsonify(ok=True,exam_id=eid,title=title,question_count=len(questions),status="published",common_password=password)
         except Exception as ex:
             app.logger.exception("Gemini exam creation failed")
             return jsonify(ok=False,error=str(ex)[:500]),500
