@@ -353,6 +353,28 @@ def register(app):
             app.logger.exception("MCP Excel exam import failed")
             return jsonify(ok=False, error="Could not import the Excel workbook. Check server logs and workbook format."), 500
 
+
+
+    # MCP archive endpoint: removes an exam from active use while retaining its history.
+    @app.post("/api/mcp/exams/<int:exam_id>/delete")
+    @mcp_auth
+    def mcp_delete_exam(exam_id):
+        with db() as c:
+            exam = c.execute("SELECT id, status, archived_at FROM exams WHERE id=?", (exam_id,)).fetchone()
+            if not exam:
+                return jsonify(ok=False, error="Examination not found."), 404
+            if exam["archived_at"] is not None:
+                return jsonify(ok=True, exam_id=exam_id, status="archived", message="Examination was already archived.")
+            active = c.execute(
+                "SELECT COUNT(*) AS n FROM attempts WHERE exam_id=? AND status='in_progress'",
+                (exam_id,)
+            ).fetchone()["n"]
+            if active:
+                return jsonify(ok=False, error="Cannot archive an examination while student attempts are in progress.", active_attempts=active), 409
+            c.execute("UPDATE exams SET archived_at=?, status='closed' WHERE id=?", (iso(now()), exam_id))
+        return jsonify(ok=True, exam_id=exam_id, status="archived",
+                       message="Examination archived from active use. Questions and results have been retained.")
+
     @app.get("/api/mcp/results")
     @mcp_auth
     def mcp_results():
