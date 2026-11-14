@@ -185,8 +185,10 @@ def student_home():
 @student_required
 def start_exam(exam_id):
     with db() as c:
-        e=c.execute("SELECT * FROM exams WHERE id=? AND status='published'",(exam_id,)).fetchone()
+        e=c.execute("SELECT * FROM exams WHERE id=? AND status='published' AND archived_at IS NULL",(exam_id,)).fetchone()
         if not e: abort(404)
+        if not session.get('exam_code') or e['exam_code'] != session.get('exam_code'):
+            abort(403)
         existing=c.execute('SELECT * FROM attempts WHERE exam_id=? AND student_id=?',(exam_id,session['student_id'])).fetchone()
         if existing:
             if existing['status']=='in_progress': return redirect(url_for('take_exam',attempt_id=existing['id']))
@@ -200,8 +202,10 @@ def start_exam(exam_id):
 @student_required
 def take_exam(attempt_id):
     with db() as c:
-        a=c.execute('SELECT * FROM attempts WHERE id=? AND student_id=?',(attempt_id,session['student_id'])).fetchone()
+        a=c.execute('SELECT a.*,e.exam_code,e.archived_at FROM attempts a JOIN exams e ON e.id=a.exam_id WHERE a.id=? AND a.student_id=?',(attempt_id,session['student_id'])).fetchone()
         if not a: abort(404)
+        if not session.get('exam_code') or a['exam_code'] != session.get('exam_code') or a['archived_at'] is not None:
+            abort(403)
         if a['status']!='in_progress': return render_template('finished.html')
         if now() >= parse_dt(a['review_deadline']):
             finalize(c,attempt_id,'auto_submitted'); return render_template('finished.html')
