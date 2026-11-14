@@ -255,7 +255,7 @@ def create_exam_from_questions(title: str, class_level: str, questions_json: str
     result = portal_call("POST", "/api/mcp/exams/upload", json={
         "title": title, "class_level": class_level, "workbook_base64": encoded,
         "shared_password": shared_password, "duration": duration, "review": review,
-        "password_exam_limit": 1, "file_name": "gemini_generated_exam.xlsx",
+        "password_exam_limit": password_exam_limit, "file_name": "gemini_generated_exam.xlsx",
     })
     result["common_password"] = shared_password
     result["student_login_fields"] = ["student_name", "class_level", "common_password"]
@@ -272,7 +272,7 @@ def upload_exam_excel(title: str, class_level: str, workbook_base64: str, shared
     result = portal_call("POST", "/api/mcp/exams/upload", json={
         "title": title, "class_level": class_level, "workbook_base64": workbook_base64,
         "shared_password": shared_password, "duration": duration, "review": review,
-        "password_exam_limit": 1, "file_name": file_name,
+        "password_exam_limit": password_exam_limit, "file_name": file_name,
     })
     result["common_password"] = shared_password
     return result
@@ -287,6 +287,14 @@ def create_exam_draft(title: str, class_level: str, prompt: str, duration: int, 
         "password_exam_limit": password_exam_limit,
     })
 
+@mcp.tool()
+def update_shared_password_quota(shared_password: str, max_exams: int = 2) -> dict:
+    """Update the exam quota for an existing common password without changing the password. Use only when explicitly authorized by the teacher."""
+    if not shared_password or not 1 <= int(max_exams) <= 100:
+        raise ValueError("Provide a password and max_exams between 1 and 100.")
+    return portal_call("POST", "/api/mcp/password-quota", json={
+        "shared_password": shared_password, "max_exams": int(max_exams)
+    })
 @mcp.tool()
 def list_examinations() -> dict:
     """List examination titles, statuses and exam codes."""
