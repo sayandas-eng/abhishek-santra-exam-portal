@@ -249,6 +249,26 @@ def register(app):
         with db() as c:
             rows=c.execute("SELECT id,title,status,exam_code,duration,created_at FROM exams ORDER BY id DESC").fetchall()
         return jsonify(exams=[dict(r) for r in rows])
+    @app.post("/api/mcp/password-quota")
+    @mcp_auth
+    def mcp_update_password_quota():
+        data = request.get_json(force=True)
+        password = str(data.get("shared_password", "")).strip()
+        try:
+            new_limit = int(data.get("max_exams", 0))
+        except (TypeError, ValueError):
+            return jsonify(ok=False, error="max_exams must be an integer."), 400
+        if not password or not 1 <= new_limit <= 100:
+            return jsonify(ok=False, error="Provide a password and max_exams between 1 and 100."), 400
+        with db() as c:
+            groups = c.execute("SELECT * FROM portal_access_groups ORDER BY id DESC").fetchall()
+            match = next((g for g in groups if check_password_hash(g["password_hash"], password)), None)
+            if not match:
+                return jsonify(ok=False, error="No existing password group matches the supplied password."), 404
+            c.execute("UPDATE portal_access_groups SET max_exams=? WHERE id=?", (new_limit, match["id"]))
+            updated = c.execute("SELECT max_exams, exams_created FROM portal_access_groups WHERE id=?", (match["id"],)).fetchone()
+        return jsonify(ok=True, max_exams=updated["max_exams"], exams_created=updated["exams_created"],
+                       message="Existing shared-password quota updated.")
     @app.post("/api/mcp/exams")
     @mcp_auth
     def mcp_create_exam():
