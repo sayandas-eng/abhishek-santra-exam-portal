@@ -59,28 +59,25 @@ def register(app):
         if request.method == "POST":
             name = request.form.get("name","").strip()[:100]
             grade = request.form.get("class_level","").strip()
-            code = request.form.get("exam_code","").strip().upper()
-            password = request.form.get("password","")
-            if not name or grade not in [f"Class {i}" for i in range(5,13)] or not code or not password:
-                flash("Enter your name, class, exam code and password.")
+            password = request.form.get("password","").strip()
+            if not name or grade not in [f"Class {i}" for i in range(5,13)] or not password:
+                flash("Enter your name, class and common password.")
                 return render_template("login.html", kind="Student")
             with db() as c:
-                exam = c.execute("SELECT * FROM exams WHERE exam_code=? AND status='published' AND archived_at IS NULL",(code,)).fetchone()
-                if not exam or exam["class_level"] != grade or not exam["access_password_hash"] or not check_password_hash(exam["access_password_hash"], password):
-                    flash("Invalid exam code or password.")
+                candidates = c.execute("SELECT * FROM exams WHERE status='published' AND archived_at IS NULL AND class_level=? AND access_password_hash IS NOT NULL ORDER BY id DESC",(grade,)).fetchall()
+                exam = next((item for item in candidates if check_password_hash(item["access_password_hash"], password)), None)
+                if not exam:
+                    flash("Invalid class or common password, or no active exam matches it.")
                     return render_template("login.html", kind="Student")
-                s = c.execute("SELECT * FROM students WHERE display_name=? AND class_level=? ORDER BY id LIMIT 1",(name,grade)).fetchone()
-                if s:
-                    sid = s["id"]
-                else:
-                    key = secrets.token_hex(12)
-                    cur = c.execute(
-                        "INSERT INTO students(username,password_hash,active,display_name,class_level) VALUES(?,?,1,?,?) RETURNING id",
-                        ("student_"+key, generate_password_hash(secrets.token_urlsafe(32)), name, grade))
-                    sid = cur.fetchone()["id"]
+                # Names are display-only; each login receives a fresh internal submission identity.
+                key = secrets.token_hex(12)
+                cur = c.execute(
+                    "INSERT INTO students(username,password_hash,active,display_name,class_level) VALUES(?,?,1,?,?) RETURNING id",
+                    ("student_"+key, generate_password_hash(secrets.token_urlsafe(32)), name, grade))
+                sid = cur.fetchone()["id"]
                 session.clear(); session["role"]="student"; session["student_id"]=sid
                 session["username"]=name; session["student_name"]=name; session["class_level"]=grade
-                session["exam_code"]=code
+                session["exam_code"]=exam["exam_code"]
                 return redirect(url_for("student_home"))
         return render_template("login.html", kind="Student")
     app.view_functions["student_login"] = student_login_v2
@@ -344,9 +341,10 @@ def register(app):
                     c.execute("INSERT INTO questions(exam_id,q_no,prompt,qtype,options,answer,marks) VALUES(?,?,?,?,?,?,?)",
                               (exam_id, n, q["question"], q["type"], "|".join(q["options"]), q["answer"], q["marks"]))
                 c.execute("UPDATE portal_access_groups SET exams_created=exams_created+1 WHERE id=?", (gid,))
-            return jsonify(ok=True, exam_id=exam_id, title=title, class_level=grade, exam_code=code,
+            c.execute("UPDATE exams SET status='published' WHERE id=?", (exam_id,))
+            return jsonify(ok=True, exam_id=exam_id, title=title, class_level=grade,
                            question_count=len(questions), total_marks=sum(q["marks"] for q in questions),
-                           status="draft", message="Uploaded as draft. Teacher review and approval are required before students can access it.")
+                           status="published", message="Exam uploaded and published automatically. Students can use the common password.")
         except (ValueError, TypeError) as ex:
             return jsonify(ok=False, error=str(ex)), 400
         except Exception as ex:
