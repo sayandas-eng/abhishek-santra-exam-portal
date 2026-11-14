@@ -219,8 +219,8 @@ def take_exam(attempt_id):
 def save_answer(attempt_id):
     data=request.get_json(force=True); qid=data.get('question_id'); answer=str(data.get('answer',''))
     with db() as c:
-        a=c.execute('SELECT * FROM attempts WHERE id=? AND student_id=?',(attempt_id,session['student_id'])).fetchone()
-        if not a or a['status']!='in_progress': return jsonify(ok=False,error='Attempt is not active'),403
+        a=c.execute('SELECT a.*,e.exam_code FROM attempts a JOIN exams e ON e.id=a.exam_id WHERE a.id=? AND a.student_id=?',(attempt_id,session['student_id'])).fetchone()
+        if not a or a['exam_code'] != session.get('exam_code') or a['status']!='in_progress': return jsonify(ok=False,error='Attempt is not active'),403
         if now() >= parse_dt(a['review_deadline']): return jsonify(ok=False,error='Examination time has ended'),403
         q=c.execute('SELECT id FROM questions WHERE id=? AND exam_id=?',(qid,a['exam_id'])).fetchone()
         if not q: return jsonify(ok=False),400
@@ -232,8 +232,8 @@ def save_answer(attempt_id):
 def event(attempt_id):
     data=request.get_json(force=True); name=str(data.get('event','focus_lost'))[:80]
     with db() as c:
-        a=c.execute('SELECT * FROM attempts WHERE id=? AND student_id=?',(attempt_id,session['student_id'])).fetchone()
-        if not a or a['status']!='in_progress': return jsonify(ok=False),403
+        a=c.execute('SELECT a.*,e.exam_code FROM attempts a JOIN exams e ON e.id=a.exam_id WHERE a.id=? AND a.student_id=?',(attempt_id,session['student_id'])).fetchone()
+        if not a or a['exam_code'] != session.get('exam_code') or a['status']!='in_progress': return jsonify(ok=False),403
         c.execute('INSERT INTO violations(attempt_id,event,happened_at) VALUES(?,?,?)',(attempt_id,name,iso(now())))
         # A backgrounded exam tab is treated as a disqualifying violation.
         # The server, not the browser, locks and submits the attempt.
@@ -248,8 +248,8 @@ def leave_exam(attempt_id):
     # Called with sendBeacon during pagehide. Best effort only: browsers/network
     # are not required to deliver requests when a tab or device is terminated.
     with db() as c:
-        a = c.execute('SELECT * FROM attempts WHERE id=? AND student_id=?', (attempt_id, session['student_id'])).fetchone()
-        if not a: return ('', 404)
+        a = c.execute('SELECT a.*,e.exam_code FROM attempts a JOIN exams e ON e.id=a.exam_id WHERE a.id=? AND a.student_id=?', (attempt_id, session['student_id'])).fetchone()
+        if not a or a['exam_code'] != session.get('exam_code'): return ('', 404)
         finalize(c, attempt_id, 'submitted')
     return ('', 204)
 
@@ -258,8 +258,8 @@ def leave_exam(attempt_id):
 @student_required
 def submit_exam(attempt_id):
     with db() as c:
-        a=c.execute('SELECT * FROM attempts WHERE id=? AND student_id=?',(attempt_id,session['student_id'])).fetchone()
-        if not a: abort(404)
+        a=c.execute('SELECT a.*,e.exam_code FROM attempts a JOIN exams e ON e.id=a.exam_id WHERE a.id=? AND a.student_id=?',(attempt_id,session['student_id'])).fetchone()
+        if not a or a['exam_code'] != session.get('exam_code'): abort(404)
         finalize(c,attempt_id,'submitted')
     return render_template('finished.html')
 
